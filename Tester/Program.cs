@@ -29,6 +29,8 @@ namespace Tester
                 }, 
             */
 
+            Console.WriteLine("This should be in Test-New-Branch");
+
             CacheBuster.Buster.Bust($@"{{
                 ""target"": 3,
                 ""items"": [{{ 
