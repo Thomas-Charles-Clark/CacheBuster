@@ -32,18 +32,21 @@ namespace Tester
             Console.WriteLine("This should be in Test-New-Branch");
 
             CacheBuster.Buster.Bust($@"{{
-                ""target"": 3,
+                ""target"": 0,
                 ""items"": [{{ 
                     ""templateId"": null, 
                     ""explicitExpiry"": null,
                     ""contentDate"": ""{DateTime.Now.ToString("yyyy/MM/dd")}"",
                     ""tradeSwitch"": null,
                     ""contentType"": ""landingPage"",
-                    ""contentId"": 1092,
+                    ""contentId"": 1532,
                     ""countryId"": 81,
-                    ""languageId"": 1
+                    ""languageId"": 1,
+                    ""fullUrl"": ""https://localhost:44338/en-gb/kings-road-store/l1532""
                 }}]
             }}");
+
+            CacheBuster.Buster.Fill("https://flock-dev.designersguild.com/en-gb/kings-road-store/l1532");
 
             Console.WriteLine("Press any key to continue...");
 

@@ -18,7 +18,7 @@ namespace CacheBuster
 
         private static readonly string[] siteEndpoints = new string[]
         {
-            "https://localhost:44302/",
+            "https://localhost:44338/",
             "https://flock-dev.designersguild.com/",
             "https://flock-preview.designersguild.com/",
             "https://www.designersguild.com/api/cache/purge"
@@ -26,7 +26,7 @@ namespace CacheBuster
 
         private static readonly string[] cacheEndpoints = new string[]
         {
-            "https://localhost:44302/api/cache/purge",
+            "https://localhost:44338/api/cache/purge",
             "https://flock-dev.designersguild.com/api/cache/purge",
             "https://flock-preview.designersguild.com/api/cache/purge",
             "https://www.designersguild.com/api/cache/purge"
@@ -43,9 +43,42 @@ namespace CacheBuster
             BustWebCache(bustParams);
 
             return 0;
-        }
+		}
 
-        public static int BustWebCache(PassBust objBust)
+		[Microsoft.SqlServer.Server.SqlFunction(DataAccess = DataAccessKind.Read)]
+		[System.Security.Permissions.PermissionSet(System.Security.Permissions.SecurityAction.Demand, Name = "FullTrust")]
+		public static int Fill(string FullUrl)
+		{
+            using (var client = new HttpClient())
+			{
+				var request = new HttpRequestMessage()
+				{
+					RequestUri = new Uri(FullUrl),
+					Method = HttpMethod.Get
+				};
+
+				request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic",
+					Convert.ToBase64String(
+						System.Text.ASCIIEncoding.ASCII.GetBytes($"{siteUsername}:{sitePassword}")
+					)
+				);
+
+				request.Headers.Add("User-Agent", "DesignersGuild_Cache_Fill");
+
+				var response = client.SendAsync(request).Result;
+
+                if (response.IsSuccessStatusCode)
+                {
+                    return 0;
+                } 
+                else
+                {
+                    return 1;
+                }
+			}
+		}
+
+		public static int BustWebCache(PassBust objBust)
         {
             using (var client = new HttpClient())
             {
@@ -57,20 +90,22 @@ namespace CacheBuster
                         Method = HttpMethod.Post
                     };
 
-                    request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic",
-                        Convert.ToBase64String(
-                            System.Text.ASCIIEncoding.ASCII.GetBytes($"{siteUsername}:{sitePassword}")
-                        )
-                    );
-
                     request.Headers.Add("cacheBustingKey", cacheBustingKey);
 
-                    request.Content = new StringContent(JsonConvert.SerializeObject(item), Encoding.UTF8, "application/json");
+					request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic",
+						Convert.ToBase64String(
+							System.Text.ASCIIEncoding.ASCII.GetBytes($"{siteUsername}:{sitePassword}")
+						)
+					);
+
+					request.Headers.Add("User-Agent", "DesignersGuild_Cache_Bust");
+
+					request.Content = new StringContent(JsonConvert.SerializeObject(item), Encoding.UTF8, "application/json");
 
                     var response = client.SendAsync(request).Result;
 
 #if DEBUG
-                    Console.WriteLine(response.Content.ReadAsStringAsync().Result);
+					Console.WriteLine(response.Content.ReadAsStringAsync().Result);
 #endif
                 });
             }

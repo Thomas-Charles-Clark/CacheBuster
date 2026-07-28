@@ -8,10 +8,12 @@ namespace CacheBuster.Models
 {
     public class PassBust
     {
+        /// <summary>
         // 0 = Localhost
         // 1 = Dev
         // 2 = Preview
         // 3 = Production
+        /// </summary>
         public byte target { get; set; }
         public List<BustItem> items { get; set; }
     }
@@ -26,5 +28,27 @@ namespace CacheBuster.Models
         public long contentId { get; set; }
         public short countryId { get; set; }
         public byte languageId { get; set; }
+        public IEnumerable<long> pageSectionIds { get; set; }
+
+        public BustItem(byte? templateId,
+            DateTimeOffset? explicitExpiry,
+            DateTime contentDate,
+            bool? tradeSwitch,
+            string contentType,
+            long contentId,
+            short countryId,
+            byte languageId,
+            IEnumerable<long> pageSectionIds = null)
+        {
+            this.templateId = templateId;
+            this.explicitExpiry = explicitExpiry;
+            this.contentDate = contentDate;
+            this.tradeSwitch = tradeSwitch;
+            this.contentType = contentType;
+            this.contentId = contentId;
+            this.countryId = countryId;
+            this.languageId = languageId;
+            this.pageSectionIds = pageSectionIds ?? new long[] { };
+        }
     }
 }
