@@ -4,113 +4,110 @@ using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
+using System.Runtime.Versioning;
 using System.Text;
 using System.Threading.Tasks;
 
 namespace CacheBuster
 {
-    public static class Buster
-    {
-        private static string siteUsername = "CAdmin";
-        private static string sitePassword = "D3s1gner5";
-        private static string cacheBustingKey = "9079C890-8ADB-47C2-8D26-458C773EFEDA";
+	public static class Credentials
+	{
+		public static readonly string SiteUsername = "CAdmin";
+		public static readonly string SitePassword = "TapestryFlower22";
+		public static readonly string CacheBustingKey = "9079C890-8ADB-47C2-8D26-458C773EFEDA";
+	}
 
-        private static readonly string[] siteEndpoints = new string[]
-        {
-            "https://localhost:44338/",
-            "https://flock-dev.designersguild.com/",
-            "https://flock-preview.designersguild.com/",
-            "https://www.designersguild.com/api/cache/purge"
-        };
-
-        private static readonly string[] cacheEndpoints = new string[]
-        {
-            "https://localhost:44338/api/cache/purge",
-            "https://flock-dev.designersguild.com/api/cache/purge",
-            "https://flock-preview.designersguild.com/api/cache/purge",
-            "https://www.designersguild.com/api/cache/purge"
-        };
-
-        [Microsoft.SqlServer.Server.SqlFunction(DataAccess = DataAccessKind.Read)]
-        [System.Security.Permissions.PermissionSet(System.Security.Permissions.SecurityAction.Demand, Name = "FullTrust")]
-        public static int Bust(string JSON)
-        {
-            var bustParams = JsonConvert.DeserializeObject<PassBust>(JSON);
-
-            Console.WriteLine($"{JSON}");
-
-            BustWebCache(bustParams);
-
-            return 0;
-		}
-
-		[Microsoft.SqlServer.Server.SqlFunction(DataAccess = DataAccessKind.Read)]
-		[System.Security.Permissions.PermissionSet(System.Security.Permissions.SecurityAction.Demand, Name = "FullTrust")]
-		public static int Fill(string FullUrl)
+	public static partial class Buster
+	{
+		private static readonly ParallelOptions parallelOptions = new ParallelOptions
 		{
-            using (var client = new HttpClient())
-			{
-				var request = new HttpRequestMessage()
-				{
-					RequestUri = new Uri(FullUrl),
-					Method = HttpMethod.Get
-				};
+			MaxDegreeOfParallelism = 4
+		};
 
-				request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic",
+		// This is used by Flock to bust individual pieces of content
+		public static int BustWebCache(PassBust objBust)
+		{
+			using (var client = new HttpClient())
+			{
+				client.DefaultRequestHeaders.Clear();
+
+				client.DefaultRequestHeaders.Add("cacheBustingKey", Credentials.CacheBustingKey);
+
+				client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic",
 					Convert.ToBase64String(
-						System.Text.ASCIIEncoding.ASCII.GetBytes($"{siteUsername}:{sitePassword}")
+						System.Text.ASCIIEncoding.ASCII.GetBytes($"{Credentials.SiteUsername}:{Credentials.SitePassword}")
 					)
 				);
 
-				request.Headers.Add("User-Agent", "DesignersGuild_Cache_Fill");
+				client.DefaultRequestHeaders.Add("User-Agent", "DesignersGuild_Cache_Bust");
 
-				var response = client.SendAsync(request).Result;
+				Parallel.ForEach(objBust.items, parallelOptions, (item) =>
+				{
+					// Why does this even need to go through Cloudflare? Can't I just DNS lookup the domain names and route directly there?
+					// Or is there a barrier between VM-SQL and VM-WEB?
+					// No; VM-WEB uses IIS which does some trickery to permit multiple different sites with different bindings existing on the same server IP
 
-                if (response.IsSuccessStatusCode)
-                {
-                    return 0;
-                } 
-                else
-                {
-                    return 1;
-                }
-			}
-		}
+					// That is achieved by using the "Host Header" header. Perform the DNS lookup, include the Host Header header, Robert will be your father's brother.
 
-		public static int BustWebCache(PassBust objBust)
-        {
-            using (var client = new HttpClient())
-            {
-                Parallel.ForEach(objBust.items, (item) => 
-                {
-                    var request = new HttpRequestMessage()
-                    {
-                        RequestUri = new Uri(cacheEndpoints[objBust.target]),
-                        Method = HttpMethod.Post
-                    };
+					var request = new HttpRequestMessage()
+					{
+						RequestUri = new Uri($"{(objBust.host.StartsWith("https://") ? "" : Framework.HttpsPrefix)}{objBust.host}{Framework.CacheBustingApiSingularSuffix}"),
+						Method = HttpMethod.Post
+					};
 
-                    request.Headers.Add("cacheBustingKey", cacheBustingKey);
-
-					request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic",
-						Convert.ToBase64String(
-							System.Text.ASCIIEncoding.ASCII.GetBytes($"{siteUsername}:{sitePassword}")
-						)
-					);
-
-					request.Headers.Add("User-Agent", "DesignersGuild_Cache_Bust");
+					request.Headers.Add("Host", objBust.host);
 
 					request.Content = new StringContent(JsonConvert.SerializeObject(item), Encoding.UTF8, "application/json");
 
-                    var response = client.SendAsync(request).Result;
+					var response = client.SendAsync(request).Result;
 
 #if DEBUG
-					Console.WriteLine(response.Content.ReadAsStringAsync().Result);
-#endif
-                });
-            }
+					var obj = JsonConvert.DeserializeObject(response.Content.ReadAsStringAsync().Result);
 
-            return 0;
-        }
-    }
+					Console.WriteLine(JsonConvert.SerializeObject(obj, Formatting.Indented));// JsonConvert.SerializeObject(obj, Formatting.Indented));
+#endif
+				});
+			}
+
+			return 0;
+		}
+	}
+
+	public static partial class Buster
+	{
+		// This is used by SQL to bust large batches of content
+		[Microsoft.SqlServer.Server.SqlFunction(DataAccess = DataAccessKind.Read)]
+		[System.Security.Permissions.PermissionSet(System.Security.Permissions.SecurityAction.Demand, Name = "FullTrust")]
+		public static int Bust(string JSON)
+		{
+			try
+			{
+				// Trigger the synchronous execution
+				string jsonResult = MicroserviceClient.PostSync("https://cachebuster.designersguild.com/cacheBusting", JSON);
+
+#if DEBUG
+				Console.WriteLine(jsonResult);
+#else
+				// Send information back to the SQL Server Messages tab for visibility
+				// SqlContext.Pipe.Send("Microservice call completed successfully.");
+				// SqlContext.Pipe.Send(jsonResult);
+#endif
+
+				return 0;
+			}
+			catch (Exception ex)
+			{
+#if DEBUG
+				Console.ForegroundColor = ConsoleColor.Red;
+				Console.WriteLine(ex);
+#else
+				// Standard SQLCLR exception bubbling
+				// SqlContext.Pipe.Send("Error executing microservice call: " + ex.GetBaseException().Message);
+#endif
+				throw ex;
+			}
+		}
+	}
 }

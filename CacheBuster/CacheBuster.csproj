@@ -52,6 +52,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Buster.cs" />
+    <Compile Include="Filler.cs" />
+    <Compile Include="Models\Framework.cs" />
+    <Compile Include="Models\MicroserviceClient.cs" />
     <Compile Include="Models\PassBust.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
